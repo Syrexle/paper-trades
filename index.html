@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e14">
+<title>Paper Trades — Live</title>
+<style>
+  :root{
+    --bg:#0a0e14; --card:#121826; --card2:#0e1420; --line:#1e293b;
+    --txt:#e5e9f0; --dim:#8b93a7; --green:#22c55e; --red:#ef4444;
+    --boost:#38bdf8; --feed:#a78bfa;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{margin:0; background:var(--bg); color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,Roboto,sans-serif;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);}
+  .wrap{max-width:560px; margin:0 auto; padding:16px 14px 40px;}
+  header{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;}
+  h1{font-size:20px; margin:0; letter-spacing:.3px;}
+  .live{font-size:11px; color:var(--dim); display:flex; align-items:center; gap:6px;}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--green);
+    box-shadow:0 0 8px var(--green); animation:pulse 2s infinite;}
+  @keyframes pulse{50%{opacity:.4}}
+  .hero{background:linear-gradient(135deg,#141c2e,#0e1420); border:1px solid var(--line);
+    border-radius:16px; padding:18px; margin:12px 0;}
+  .hero .label{font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:1px;}
+  .hero .pnl{font-size:38px; font-weight:800; margin:4px 0; font-variant-numeric:tabular-nums;}
+  .up{color:var(--green);} .down{color:var(--red);}
+  .hero .sub{display:flex; gap:14px; font-size:12px; color:var(--dim); margin-top:6px;}
+  .hero .sub b{color:var(--txt);}
+  .tabs{display:flex; gap:8px; margin:14px 0;}
+  .tab{flex:1; text-align:center; padding:9px 0; border-radius:10px; font-size:13px;
+    background:var(--card2); border:1px solid var(--line); color:var(--dim); cursor:pointer;}
+  .tab.active{background:var(--card); color:var(--txt); border-color:#334155; font-weight:600;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:14px; margin-bottom:10px;}
+  .card .top{display:flex; justify-content:space-between; align-items:center;}
+  .name{font-size:16px; font-weight:700;}
+  .src{font-size:10px; padding:3px 8px; border-radius:20px; text-transform:uppercase;
+    letter-spacing:.6px; font-weight:700;}
+  .src.boosts{background:rgba(56,189,248,.14); color:var(--boost);}
+  .src.hover_feed{background:rgba(167,139,250,.14); color:var(--feed);}
+  .mult{font-size:26px; font-weight:800; font-variant-numeric:tabular-nums; margin:8px 0 2px;}
+  .row{display:flex; justify-content:space-between; font-size:12px; color:var(--dim); margin-top:3px;}
+  .row b{color:var(--txt); font-variant-numeric:tabular-nums;}
+  .bar{height:6px; background:#1c2536; border-radius:4px; margin-top:10px; overflow:hidden;}
+  .bar i{display:block; height:100%; border-radius:4px; background:var(--green);}
+  .link{font-size:12px; color:var(--boost); text-decoration:none;}
+  .closed .mult{font-size:20px;}
+  .reason{font-size:11px; color:var(--dim); background:var(--card2); padding:3px 8px;
+    border-radius:8px;}
+  h2{font-size:13px; color:var(--dim); text-transform:uppercase; letter-spacing:1px;
+    margin:20px 0 10px;}
+  .empty{color:var(--dim); font-size:13px; text-align:center; padding:24px 0;}
+  .foot{text-align:center; font-size:11px; color:var(--dim); margin-top:24px;}
+  .tick{font-size:10px; color:var(--dim);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Paper Trades</h1>
+    <div class="live"><span class="dot"></span><span id="upd">connecting…</span></div>
+  </header>
+
+  <div class="hero">
+    <div class="label">Total paper P&amp;L</div>
+    <div class="pnl" id="totalPnl">—</div>
+    <div class="sub">
+      <span>Realized <b id="rPnl">—</b></span>
+      <span>Unrealized <b id="uPnl">—</b></span>
+      <span>Open <b id="openN">—</b></span>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-f="all">All</div>
+    <div class="tab" data-f="boosts">Boosts</div>
+    <div class="tab" data-f="hover_feed">Hover feed</div>
+  </div>
+
+  <h2>Open positions</h2>
+  <div id="positions"></div>
+
+  <h2>Closed trades</h2>
+  <div id="closed" class="closed"></div>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+let SNAP = null, filter = "all";
+const $ = id => document.getElementById(id);
+
+function fmt$ (n, d=2){ if(n==null||isNaN(n)) return "—";
+  const s = n<0?"−":""; return s+"$"+Math.abs(n).toFixed(d); }
+function fmtP (px){ if(px==null) return "—";
+  return px >= 0.01 ? "$"+px.toFixed(4) : "$"+px.toPrecision(3); }
+function ago(iso){ if(!iso) return "";
+  const m = Math.max(0, Math.round((Date.now()-new Date(iso))/60000));
+  return m < 1 ? "just now" : m < 60 ? m+"m ago" : Math.floor(m/60)+"h "+(m%60)+"m ago"; }
+function cls(n){ return n==null ? "" : (n>=0 ? "up" : "down"); }
+
+async function loadSnapshot(){
+  try{
+    const r = await fetch("snapshot.json?ts="+Date.now(), {cache:"no-store"});
+    if(!r.ok) throw 0;
+    SNAP = await r.json();
+    render();
+  }catch(e){ $("upd").textContent = "offline — retrying"; }
+}
+
+function render(){
+  if(!SNAP) return;
+  const t = SNAP.totals, all = t.realized_pnl + t.unrealized_pnl;
+  $("totalPnl").textContent = (all>=0?"+":"−")+"$"+Math.abs(all).toFixed(2);
+  $("totalPnl").className = "pnl "+cls(all);
+  $("rPnl").textContent = fmt$(t.realized_pnl);
+  $("rPnl").className = cls(t.realized_pnl);
+  $("uPnl").textContent = fmt$(t.unrealized_pnl);
+  $("uPnl").className = cls(t.unrealized_pnl);
+  $("openN").textContent = t.open;
+  $("upd").textContent = "updated "+ago(SNAP.updated_at);
+  $("foot").textContent = "Paper only · $"+SNAP.trade_size_usd+
+    " per trade · $"+SNAP.bankroll_usd+" bankroll · 2x TP / 0.6x SL · snapshot "+ago(SNAP.updated_at);
+
+  const pos = SNAP.positions
+    .filter(p => filter==="all" || p.source===filter)
+    .sort((a,b)=>(b.multiple||0)-(a.multiple||0));
+  $("positions").innerHTML = pos.length ? pos.map(p=>{
+    const pct = p.multiple==null?0:Math.min(100,Math.max(0,(p.multiple/2)*100));
+    return `<div class="card">
+      <div class="top"><span class="name">${p.name}</span>
+        <span class="src ${p.source}">${p.source==="boosts"?"Boosts":"Hover"}</span></div>
+      <div class="mult ${cls((p.multiple||1)-1)}">${p.multiple==null?"—":p.multiple.toFixed(2)+"x"}</div>
+      <div class="row"><span>Entry</span><b>${fmtP(p.entry_price)}</b></div>
+      <div class="row"><span>Now <span class="tick" data-live="${p.address}">live</span></span><b data-px="${p.address}">${fmtP(p.current_price)}</b></div>
+      <div class="row"><span>P&amp;L</span><b class="${cls(p.unrealized_pnl)}">${fmt$(p.unrealized_pnl)}</b></div>
+      <div class="row"><span>Held</span><b>${p.age_h}h</b></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      ${p.url?`<div class="row" style="margin-top:8px"><a class="link" href="${p.url}" target="_blank" rel="noopener">DexScreener ↗</a></div>`:""}
+    </div>`;}).join("")
+    : `<div class="empty">No open positions.</div>`;
+
+  const cl = SNAP.closed
+    .filter(c => filter==="all" || c.source===filter)
+    .sort((a,b)=>new Date(b.exit_time||0)-new Date(a.exit_time||0));
+  $("closed").innerHTML = cl.length ? cl.map(c=>`
+    <div class="card"><div class="top"><span class="name">${c.name}</span>
+      <span class="src ${c.source}">${c.source==="boosts"?"Boosts":"Hover"}</span></div>
+      <div class="mult ${cls((c.multiple||1)-1)}">${c.multiple==null?"—":c.multiple.toFixed(2)+"x"}
+        <span style="font-size:13px"> · </span>
+        <span style="font-size:15px" class="${cls(c.pnl_usd)}">${fmt$(c.pnl_usd)}</span></div>
+      <div class="row"><span>${c.exit_reason||""}</span><b>${ago(c.exit_time)}</b></div>
+    </div>`).join("")
+    : `<div class="empty">No closed trades yet.</div>`;
+
+  tickLive();
+}
+
+// Live price tick from DexScreener (batch, up to 30), falls back to snapshot values.
+async function tickLive(){
+  const addrs = [...new Set(SNAP.positions
+    .filter(p=>filter==="all"||p.source===filter).map(p=>p.address))].slice(0,30);
+  if(!addrs.length) return;
+  try{
+    const r = await fetch("https://api.dexscreener.com/latest/dex/tokens/"+addrs.join(","));
+    if(!r.ok) throw 0;
+    const j = await r.json();
+    const px = {};
+    (j.pairs||[]).forEach(p=>{
+      const a = (p.baseToken||{}).address;
+      if(a && !(a in px)) px[a] = parseFloat(p.priceUsd);
+    });
+    SNAP.positions.forEach(p=>{
+      if(px[p.address] && p.entry_price){
+        p.current_price = px[p.address];
+        p.multiple = +(px[p.address]/p.entry_price).toFixed(3);
+        p.unrealized_pnl = +(((p.multiple-1)*p.size_usd).toFixed(2));
+      }
+    });
+    // re-render numbers only (cheap: full render)
+    render();
+    document.querySelectorAll("[data-live]").forEach(el=>el.textContent="live ✓");
+  }catch(e){ /* keep snapshot prices */ }
+}
+
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  t.classList.add("active"); filter = t.dataset.f; render();
+}));
+
+loadSnapshot();
+setInterval(loadSnapshot, 60000);   // fresh snapshot each minute
+setInterval(tickLive, 30000);       // live price tick every 30s
+</script>
+</body>
+</html>
