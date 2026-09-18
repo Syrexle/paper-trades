@@ -71,6 +71,7 @@
       <span>Boosts acct <b id="eqBoosts">—</b></span>
       <span>Hover acct <b id="eqFeed">—</b></span>
       <span>Open <b id="openN">—</b></span>
+      <span>Hover bench <b id="benchN">—</b></span>
     </div>
     <div class="sub">
       <span>Realized <b id="rPnl">—</b></span>
@@ -138,6 +139,7 @@ function paintHero(){
   $("rPnl").className = cls(t.realized_pnl);
   $("uPnl").textContent = fmt$(uAll);
   $("uPnl").className = cls(uAll);
+  $("benchN").textContent = f.bench || 0;
 }
 
 function render(){
