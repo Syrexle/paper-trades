@@ -65,12 +65,16 @@
   </header>
 
   <div class="hero">
-    <div class="label">Total paper P&amp;L</div>
+    <div class="label">Total paper equity</div>
     <div class="pnl" id="totalPnl">—</div>
+    <div class="sub">
+      <span>Boosts acct <b id="eqBoosts">—</b></span>
+      <span>Hover acct <b id="eqFeed">—</b></span>
+      <span>Open <b id="openN">—</b></span>
+    </div>
     <div class="sub">
       <span>Realized <b id="rPnl">—</b></span>
       <span>Unrealized <b id="uPnl">—</b></span>
-      <span>Open <b id="openN">—</b></span>
     </div>
   </div>
 
@@ -111,32 +115,51 @@ async function loadSnapshot(){
   }catch(e){ $("upd").textContent = "offline — retrying"; }
 }
 
-function render(){
-  if(!SNAP) return;
-  const t = SNAP.totals, all = t.realized_pnl + t.unrealized_pnl;
-  $("totalPnl").textContent = (all>=0?"+":"−")+"$"+Math.abs(all).toFixed(2);
-  $("totalPnl").className = "pnl "+cls(all);
+function paintHero(){
+  const t = SNAP.totals, ac = SNAP.accounts || {};
+  const b = ac.boosts || {}, f = ac.hover_feed || {};
+  let bU = 0, fU = 0, uAll = 0;
+  (SNAP.positions||[]).forEach(p=>{
+    const u = p.unrealized_pnl || 0;
+    if(p.source === "boosts") bU += u; else fU += u;
+    if(filter === "all" || p.source === filter) uAll += u;
+  });
+  const bSize = b.account_size_usd || 50, fSize = f.account_size_usd || 50;
+  const bEq = bSize + (b.realized_pnl || 0) + bU;
+  const fEq = fSize + (f.realized_pnl || 0) + fU;
+  const total = bEq + fEq;
+  $("totalPnl").textContent = (total>=0?"+":"−")+"$"+Math.abs(total).toFixed(2);
+  $("totalPnl").className = "pnl "+cls(total-(bSize+fSize));
+  $("eqBoosts").textContent = "$"+bEq.toFixed(2);
+  $("eqBoosts").className = cls(bEq-bSize);
+  $("eqFeed").textContent = "$"+fEq.toFixed(2);
+  $("eqFeed").className = cls(fEq-fSize);
   $("rPnl").textContent = fmt$(t.realized_pnl);
   $("rPnl").className = cls(t.realized_pnl);
-  $("uPnl").textContent = fmt$(t.unrealized_pnl);
-  $("uPnl").className = cls(t.unrealized_pnl);
-  $("openN").textContent = t.open;
+  $("uPnl").textContent = fmt$(uAll);
+  $("uPnl").className = cls(uAll);
+}
+
+function render(){
+  if(!SNAP) return;
+  paintHero();
+  $("openN").textContent = SNAP.totals.open;
   $("upd").textContent = "updated "+ago(SNAP.updated_at);
-  $("foot").textContent = "Paper only · $"+SNAP.trade_size_usd+
-    " per trade · $"+SNAP.bankroll_usd+" bankroll · 2x TP / 0.6x SL · snapshot "+ago(SNAP.updated_at);
+  $("foot").textContent = "Paper only · $"+(SNAP.trade_size_usd||5)+
+    " per trade · $50 per account · 2x TP / 0.6x SL · no re-entry after profit · snapshot "+ago(SNAP.updated_at);
 
   const pos = SNAP.positions
     .filter(p => filter==="all" || p.source===filter)
     .sort((a,b)=>(b.multiple||0)-(a.multiple||0));
   $("positions").innerHTML = pos.length ? pos.map(p=>{
     const pct = p.multiple==null?0:Math.min(100,Math.max(0,(p.multiple/2)*100));
-    return `<div class="card">
+    return `<div class="card" data-card="${p.address}">
       <div class="top"><span class="name">${p.name}</span>
         <span class="src ${p.source}">${p.source==="boosts"?"Boosts":"Hover"}</span></div>
-      <div class="mult ${cls((p.multiple||1)-1)}">${p.multiple==null?"—":p.multiple.toFixed(2)+"x"}</div>
+      <div class="mult ${cls((p.multiple||1)-1)}" data-m>${p.multiple==null?"—":p.multiple.toFixed(2)+"x"}</div>
       <div class="row"><span>Entry</span><b>${fmtP(p.entry_price)}</b></div>
       <div class="row"><span>Now <span class="tick" data-live="${p.address}">live</span></span><b data-px="${p.address}">${fmtP(p.current_price)}</b></div>
-      <div class="row"><span>P&amp;L</span><b class="${cls(p.unrealized_pnl)}">${fmt$(p.unrealized_pnl)}</b></div>
+      <div class="row"><span>P&amp;L</span><b data-pnl class="${cls(p.unrealized_pnl)}">${fmt$(p.unrealized_pnl)}</b></div>
       <div class="row"><span>Held</span><b>${p.age_h}h</b></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       ${p.url?`<div class="row" style="margin-top:8px"><a class="link" href="${p.url}" target="_blank" rel="noopener">DexScreener ↗</a></div>`:""}
@@ -155,8 +178,29 @@ function render(){
       <div class="row"><span>${c.exit_reason||""}</span><b>${ago(c.exit_time)}</b></div>
     </div>`).join("")
     : `<div class="empty">No closed trades yet.</div>`;
+}
 
-  tickLive();
+// Paint live price updates into the existing cards + hero without a full
+// re-render (avoids the old render()<->tickLive() loop).
+function paintLive(){
+  if(!SNAP) return;
+  (SNAP.positions||[]).forEach(p=>{
+    if(p.multiple == null) return;
+    const card = document.querySelector('[data-card="'+p.address+'"]');
+    if(!card) return;
+    const mEl = card.querySelector("[data-m]");
+    if(mEl){ mEl.textContent = p.multiple.toFixed(2)+"x";
+      mEl.className = "mult "+cls(p.multiple-1); }
+    const pxEl = card.querySelector("[data-px]");
+    if(pxEl) pxEl.textContent = fmtP(p.current_price);
+    const pnlEl = card.querySelector("[data-pnl]");
+    if(pnlEl){ pnlEl.textContent = fmt$(p.unrealized_pnl);
+      pnlEl.className = cls(p.unrealized_pnl); }
+    const bar = card.querySelector(".bar i");
+    if(bar) bar.style.width = Math.min(100,Math.max(0,(p.multiple/2)*100))+"%";
+  });
+  paintHero();
+  document.querySelectorAll("[data-live]").forEach(el=>el.textContent="live ✓");
 }
 
 // Live price tick from DexScreener (batch, up to 30), falls back to snapshot values.
@@ -180,9 +224,8 @@ async function tickLive(){
         p.unrealized_pnl = +(((p.multiple-1)*p.size_usd).toFixed(2));
       }
     });
-    // re-render numbers only (cheap: full render)
-    render();
-    document.querySelectorAll("[data-live]").forEach(el=>el.textContent="live ✓");
+    // update snapshot prices, then paint numbers in place (no full re-render)
+    paintLive();
   }catch(e){ /* keep snapshot prices */ }
 }
 
