@@ -146,7 +146,7 @@ function render(){
   $("openN").textContent = SNAP.totals.open;
   $("upd").textContent = "updated "+ago(SNAP.updated_at);
   $("foot").textContent = "Paper only · $"+(SNAP.trade_size_usd||5)+
-    " per trade · $50 per account · Boosts 3x TP · Hover 50% trailing stop · 0.6x SL · no re-entry after profit · snapshot "+ago(SNAP.updated_at);
+    " per trade · $50 per account · Boosts 3x TP · Hover 50% trailing stop · 0.6x SL · no re-entry, ever · snapshot "+ago(SNAP.updated_at);
 
   const pos = SNAP.positions
     .filter(p => filter==="all" || p.source===filter)
