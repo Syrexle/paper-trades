@@ -131,9 +131,9 @@ function paintHero(){
   const total = bEq + fEq;
   $("totalPnl").textContent = (total>=0?"+":"−")+"$"+Math.abs(total).toFixed(2);
   $("totalPnl").className = "pnl "+cls(total-(bSize+fSize));
-  $("eqBoosts").textContent = "$"+bEq.toFixed(2);
+  $("eqBoosts").textContent = "$"+bEq.toFixed(2)+" / $"+bSize.toFixed(0);
   $("eqBoosts").className = cls(bEq-bSize);
-  $("eqFeed").textContent = "$"+fEq.toFixed(2);
+  $("eqFeed").textContent = "$"+fEq.toFixed(2)+" / $"+fSize.toFixed(0);
   $("eqFeed").className = cls(fEq-fSize);
   $("rPnl").textContent = fmt$(t.realized_pnl);
   $("rPnl").className = cls(t.realized_pnl);
